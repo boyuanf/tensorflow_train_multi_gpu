@@ -85,7 +85,7 @@ def loss(logits, labels):
 def tower_loss(scope, images, labels):
     """Calculate the total loss on a single tower running the DNN model."""
     # Build inference Graph.
-    layer_hidden_nums = [200, 100, 50, 25, 5]
+    layer_hidden_nums = [200, 100, 50, 25, 10]
     logits = forward_propagation(images, layer_hidden_nums, True)
     _ = loss(logits, labels)
     # Assemble all of the losses for the current tower only.
@@ -133,7 +133,7 @@ def average_gradients(tower_grads):
 
 #set the num_epochs to None, will cycle through the strings in string_tensor an unlimited number of times
 def get_input(filename, batch_size, read_thread_num):
-    filename = os.path.join(FLAGS.directory, filename + '.tfrecords')
+    filename = os.path.join(FLAGS.train_dir, filename + '.tfrecords')
     print('Reading', filename)
     with tf.name_scope('inputs'):
         filename_queue = tf.train.string_input_producer(
