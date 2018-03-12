@@ -23,10 +23,13 @@ tf.app.flags.DEFINE_integer('num_gpus', 1,
 tf.app.flags.DEFINE_boolean('log_device_placement', False,
                             """Whether to log device placement.""")
 
+# TO start the tensorboard: tensorboard: 1.5.1, tensorflow: 1.5.0
+# python -m tensorboard.main --logdir=C:\Boyuan\MyPython\MNIST_Dataset
+
 # Constants describing the training process.
 MOVING_AVERAGE_DECAY = 0.99     # The decay to use for the moving average.
 NUM_EPOCHS_PER_DECAY = 350.0      # Epochs after which learning rate decays.
-LEARNING_RATE_DECAY_FACTOR = 0.01  # Learning rate decay factor.
+LEARNING_RATE_DECAY_FACTOR = 0.96  # Learning rate decay factor.
 INITIAL_LEARNING_RATE = 0.01       # Initial learning rate.
 
 # If a model is trained with multiple GPUs, prefix all Op names with tower_name
@@ -187,14 +190,16 @@ def train():
 
         # Calculate the learning rate schedule.
         num_batches_per_epoch = (60000 / FLAGS.batch_size)
-        decay_steps = int(num_batches_per_epoch * NUM_EPOCHS_PER_DECAY)
+        #decay_steps = int(num_batches_per_epoch * NUM_EPOCHS_PER_DECAY) # learning rate decay every NUM_EPOCHS_PER_DECAY epoch
+        decay_steps = int(num_batches_per_epoch)  # learning rate decay every epoch
 
         # Decay the learning rate exponentially based on the number of steps.
+        # decayed_learning_rate=learning_rate*decay_rate^(global_step/decay_steps)
         learning_rate = tf.train.exponential_decay(INITIAL_LEARNING_RATE,
                                         global_step,
                                         decay_steps,
                                         LEARNING_RATE_DECAY_FACTOR,
-                                        staircase=True)
+                                        staircase=True)  # use stair learning rate decay or gradually decay
 
         # Create an optimizer that performs gradient descent.
         opt = tf.train.GradientDescentOptimizer(learning_rate)
