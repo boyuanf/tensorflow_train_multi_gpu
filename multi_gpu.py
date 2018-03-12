@@ -16,7 +16,7 @@ tf.app.flags.DEFINE_integer('read_thread_num', 2,
                             """Number of the threads reading the input file.""")
 tf.app.flags.DEFINE_integer('batch_size', 128,
                             """Size of the training batch.""")
-tf.app.flags.DEFINE_integer('max_steps', 1000,
+tf.app.flags.DEFINE_integer('max_steps', 2000,
                             """Number of batches to run.""")
 tf.app.flags.DEFINE_integer('num_gpus', 1,
                             """How many GPUs to use.""")
@@ -24,16 +24,16 @@ tf.app.flags.DEFINE_boolean('log_device_placement', False,
                             """Whether to log device placement.""")
 
 # Constants describing the training process.
-MOVING_AVERAGE_DECAY = 0.9999     # The decay to use for the moving average.
+MOVING_AVERAGE_DECAY = 0.99     # The decay to use for the moving average.
 NUM_EPOCHS_PER_DECAY = 350.0      # Epochs after which learning rate decays.
-LEARNING_RATE_DECAY_FACTOR = 0.1  # Learning rate decay factor.
-INITIAL_LEARNING_RATE = 0.1       # Initial learning rate.
+LEARNING_RATE_DECAY_FACTOR = 0.01  # Learning rate decay factor.
+INITIAL_LEARNING_RATE = 0.01       # Initial learning rate.
 
 # If a model is trained with multiple GPUs, prefix all Op names with tower_name
 TOWER_NAME = 'tower'
 
 
-def forward_propagation(X, layer_hidden_nums, training, dropout_rate=0.1, regularizer_scale=0.01):
+def forward_propagation(X, layer_hidden_nums, training, dropout_rate=0.01, regularizer_scale=0.01):
     """
     Implements the forward propagation for the model
 
@@ -88,11 +88,21 @@ def tower_loss(scope, images, labels):
     layer_hidden_nums = [200, 100, 50, 25, 10]
     logits = forward_propagation(images, layer_hidden_nums, True)
     _ = loss(logits, labels)
+    correct = tf.nn.in_top_k(logits, labels, 1)
     # Assemble all of the losses for the current tower only.
     losses = tf.get_collection('losses', scope)
     # Calculate the total loss for the current tower.
     total_loss = tf.add_n(losses, name='total_loss')
-    return total_loss
+
+    # Attach a scalar summary to all individual losses and the total loss; do the
+    # same for the averaged version of the losses.
+    for l in losses + [total_loss]:
+        # Remove 'tower_[0-9]/' from the name in case this is a multi-GPU training
+        # session. This helps the clarity of presentation on tensorboard.
+        loss_name = re.sub('%s_[0-9]*/' % TOWER_NAME, '', l.op.name)
+        tf.summary.scalar(loss_name, l)
+
+    return total_loss, correct
 
 
 def average_gradients(tower_grads):
@@ -194,6 +204,7 @@ def train():
 
         # Calculate the gradients for each model tower.
         tower_grads = []
+        correct_sum = []
         with tf.variable_scope(tf.get_variable_scope()):
             for i in xrange(FLAGS.num_gpus):
                 with tf.device('/gpu:%d' % i):
@@ -201,8 +212,8 @@ def train():
                         # Calculate the loss for one tower of the model. This function
                         # constructs the entire model but shares the variables across
                         # all towers.
-                        loss = tower_loss(scope, images_batch, labels_batch)
-
+                        loss, correct = tower_loss(scope, images_batch, labels_batch)
+                        correct_sum.append(tf.cast(correct, tf.float32))
                         # Reuse variables for the next tower.
                         tf.get_variable_scope().reuse_variables()
 
@@ -215,6 +226,9 @@ def train():
                         # Keep track of the gradients across all towers.
                         tower_grads.append(grads)
 
+        # accuracy is calculated summarize all reconigtion results
+        correct_sum = tf.reshape(correct_sum, [-1])
+        accuracy = tf.reduce_mean(correct_sum, name='accuracy')
         # We must calculate the mean of each gradient. Note that this is the
         # synchronization point across all towers.
         grads = average_gradients(tower_grads)
@@ -258,7 +272,7 @@ def train():
 
         for step in xrange(FLAGS.max_steps):
             start_time = time.time()
-            _, loss_value = sess.run([train_op, loss])
+            _, loss_value, accuracy_value = sess.run([train_op, loss, accuracy])
             duration = time.time() - start_time
 
             assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
@@ -269,9 +283,9 @@ def train():
                 sec_per_batch = duration / FLAGS.num_gpus
 
                 format_str = ('%s: step %d, loss = %.2f (%.1f examples/sec; %.3f '
-                              'sec/batch)')
+                              'sec/batch), train_accuracy = %f')
                 print(format_str % (datetime.now(), step, loss_value,
-                                    examples_per_sec, sec_per_batch))
+                                    examples_per_sec, sec_per_batch, accuracy_value))
 
             if step % 100 == 0:
                 summary_str = sess.run(summary_op)
