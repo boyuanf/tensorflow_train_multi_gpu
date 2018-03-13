@@ -53,8 +53,8 @@ def forward_propagation(X, layer_hidden_nums, training, dropout_rate=0.01, regul
     for layer_index, layer_neurons in enumerate(layer_hidden_nums[:-1]):
         Z = tf.layers.dense(inputs=A_drop, units=layer_neurons, kernel_initializer=he_init,
                             kernel_regularizer=l1_regularizer, name="hidden%d" % (layer_index + 1))
-        Z_nor = tf.layers.batch_normalization(Z, training=training, momentum=0.9)
-        A = tf.nn.elu(Z_nor)
+        #Z_nor = tf.layers.batch_normalization(Z, training=training, momentum=0.9)
+        A = tf.nn.elu(Z)
         A_drop = tf.layers.dropout(A, dropout_rate, training=training, name="hidden%d_drop" % (layer_index + 1))
 
     # don't do normalization for the output layer
@@ -210,7 +210,8 @@ def train():
         # Calculate the gradients for each model tower.
         tower_grads = []
         correct_sum = []
-        with tf.variable_scope(tf.get_variable_scope()):
+        #with tf.variable_scope(tf.get_variable_scope(), reuse=tf.AUTO_REUSE) as var_scope:  # a good way to share variables
+        with tf.variable_scope(tf.get_variable_scope()) as var_scope:
             for i in xrange(FLAGS.num_gpus):
                 with tf.device('/gpu:%d' % i):
                     with tf.name_scope('%s_%d' % (TOWER_NAME, i)) as scope:
@@ -220,13 +221,14 @@ def train():
                         loss, correct = tower_loss(scope, images_batch, labels_batch)
                         correct_sum.append(tf.cast(correct, tf.float32))
                         # Reuse variables for the next tower.
-                        tf.get_variable_scope().reuse_variables()
+                        var_scope.reuse_variables()
 
                         # Retain the summaries from the final tower.
                         summaries = tf.get_collection(tf.GraphKeys.SUMMARIES, scope)
 
                         # Calculate the gradients for the batch of data on this tower.
                         grads = opt.compute_gradients(loss)
+                        print("grads: ", grads)
 
                         # Keep track of the gradients across all towers.
                         tower_grads.append(grads)
@@ -236,6 +238,7 @@ def train():
         accuracy = tf.reduce_mean(correct_sum, name='accuracy')
         # We must calculate the mean of each gradient. Note that this is the
         # synchronization point across all towers.
+        print("tower_grads: ", tower_grads)
         grads = average_gradients(tower_grads)
         # Add a summary to track the learning rate.
         summaries.append(tf.summary.scalar('learning_rate', learning_rate))
@@ -253,7 +256,9 @@ def train():
             MOVING_AVERAGE_DECAY, global_step)
         variables_averages_op = variable_averages.apply(tf.trainable_variables())
         # Group all updates to into a single train op.
-        train_op = tf.group(apply_gradient_op, variables_averages_op)
+        update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+        with tf.control_dependencies(update_ops):
+            train_op = tf.group(apply_gradient_op, variables_averages_op)
         # Create a saver.
         saver = tf.train.Saver(tf.global_variables())
         # Build the summary operation from the last tower summaries.
@@ -316,18 +321,3 @@ def main(argv=None):
 
 if __name__ == '__main__':
     tf.app.run()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
