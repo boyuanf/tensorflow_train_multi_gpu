@@ -75,6 +75,8 @@ def loss(logits, labels):
   """
   # Calculate the average cross entropy loss across the batch.
   labels = tf.cast(labels, tf.int64)
+  #print("labels: ", labels)
+  #print("logits: ", logits)
   cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
       labels=labels, logits=logits, name='cross_entropy_per_example')
   cross_entropy_mean = tf.reduce_mean(cross_entropy, name='cross_entropy')
@@ -204,7 +206,7 @@ def train():
         # Create an optimizer that performs gradient descent.
         opt = tf.train.GradientDescentOptimizer(learning_rate)
 
-        # Get images and labels for CIFAR-10.
+        # Get images and labels for MNIST.
         images_batch, labels_batch = get_input('mnist_train', FLAGS.batch_size, FLAGS.read_thread_num)
 
         # Calculate the gradients for each model tower.
@@ -233,7 +235,7 @@ def train():
                         # Keep track of the gradients across all towers.
                         tower_grads.append(grads)
 
-        # accuracy is calculated summarize all reconigtion results
+        # accuracy is calculated summarize all gpu batch recognition result, 2 gpu then sum of 2 batches
         correct_sum = tf.reshape(correct_sum, [-1])
         accuracy = tf.reduce_mean(correct_sum, name='accuracy')
         # We must calculate the mean of each gradient. Note that this is the
